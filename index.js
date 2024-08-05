@@ -6,6 +6,7 @@ const PORT = process.env.PORT || 3000;
 
 // Middleware to parse the JSON bodies of POST requests
 app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true })); // To parse URL-encoded bodies
 
 // POST endpoint for /slack/action-endpoint
 app.post("/slack/action-endpoint", async (req, res) => {
@@ -15,17 +16,12 @@ app.post("/slack/action-endpoint", async (req, res) => {
   if (type === "url_verification" && challenge) {
     res.status(200).json({ challenge: challenge });
   } else if (type === "event_callback") {
-    // Log the event for debugging purposes
     console.log("Received event:", event);
 
-    // Handle different event types
     if (event && event.type === "message") {
-      // If the message is from a user and not the bot itself
       if (event.subtype !== "bot_message" && !event.bot_id) {
-        // Fetch a joke from the JokeAPI
         try {
-          const joke = await getJoke();
-          // Respond to the message
+          const joke = await getJoke("Any");
           await respondToSlack(event.channel, joke);
         } catch (error) {
           console.error("Error fetching joke or responding:", error);
@@ -33,17 +29,41 @@ app.post("/slack/action-endpoint", async (req, res) => {
       }
     }
 
-    // Respond to Slack with a 200 OK status
     res.status(200).send("Event received");
   } else {
     res.status(200).send("Request received");
   }
 });
 
-// Function to fetch a joke from the JokeAPI
-async function getJoke() {
+// POST endpoint for slash commands
+app.post("/slack/commands", async (req, res) => {
+  const { command, text, response_url } = req.body;
+
+  let jokeType = "Any";
+  if (text === "programming") {
+    jokeType = "Programming";
+  } else if (text === "miscellaneous") {
+    jokeType = "Miscellaneous";
+  } else if (text === "dark") {
+    jokeType = "Dark";
+  } else if (text === "christmas") {
+    jokeType = "Christmas";
+  }
+
   try {
-    const response = await axios.get("https://v2.jokeapi.dev/joke/Any");
+    const joke = await getJoke(jokeType);
+    await sendSlackResponse(response_url, joke);
+    res.status(200).send("");
+  } catch (error) {
+    console.error("Error fetching joke:", error);
+    res.status(500).send("Internal Server Error");
+  }
+});
+
+// Function to fetch a joke from the JokeAPI
+async function getJoke(type) {
+  try {
+    const response = await axios.get(`https://v2.jokeapi.dev/joke/${type}`);
     if (response.data.type === "single") {
       return response.data.joke;
     } else {
@@ -75,6 +95,18 @@ async function respondToSlack(channel, text) {
     }
   } catch (error) {
     throw new Error("Error responding to Slack: " + error.message);
+  }
+}
+
+// Function to send a response to Slack for slash commands
+async function sendSlackResponse(responseUrl, text) {
+  try {
+    await axios.post(responseUrl, {
+      response_type: "ephemeral",
+      text: text,
+    });
+  } catch (error) {
+    throw new Error("Error sending response to Slack: " + error.message);
   }
 }
 
