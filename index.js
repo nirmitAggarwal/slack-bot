@@ -8,10 +8,17 @@ app.use(bodyParser.json());
 
 // POST endpoint for /slack/action-endpoint
 app.post("/slack/action-endpoint", (req, res) => {
-  console.log("Received a request:", req.body);
+  const { type, challenge } = req.body;
 
-  // Respond to Slack with a 200 OK status
-  res.status(200).send("Action received");
+  if (type === "url_verification" && challenge) {
+    // Respond with the challenge value as a JSON object
+    res.status(200).json({ challenge: challenge });
+  } else {
+    console.log("Received a request:", req.body);
+
+    // Respond to Slack with a 200 OK status
+    res.status(200).send("Action received");
+  }
 });
 
 // Start the server
